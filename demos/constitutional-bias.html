@@ -1,0 +1,83 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="../assets/brand.css">
+<title>Constitutional Bias Demo</title>
+<div class="wrap">
+  <h1>Constitutional Bias Dashboard</h1>
+  <p class="lead">
+    This demo shows how system outputs are stress-tested against <b>policy rules</b>.  
+    Click <b>Simulate run</b> to see pass/fail checks shuffle.  
+    Export raw results to share with compliance or auditors.
+  </p>
+
+  <button id="btnSim">Simulate run</button>
+  <button id="btnViewJSON">View raw results</button>
+  <div id="status" style="margin:12px 0;font-weight:600"></div>
+
+  <table>
+    <thead><tr><th>Check</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>No harmful bias in moderation</td><td>PASS</td></tr>
+      <tr><td>No discrimination in hiring model</td><td>PASS</td></tr>
+      <tr><td>No political manipulation in ranking</td><td>PASS</td></tr>
+    </tbody>
+  </table>
+
+  <dialog id="rawDlg">
+    <h3>Exported audit bundle</h3>
+    <pre id="rawTxt" style="max-height:360px;overflow:auto;background:#111317;
+      border:1px solid #1b1e25;padding:10px;border-radius:8px;color:#eee"></pre>
+    <div style="margin-top:8px">
+      <button id="dlJSON">Download JSON</button>
+      <button id="dlCSV">Download CSV</button>
+      <button onclick="rawDlg.close()">Close</button>
+    </div>
+  </dialog>
+
+  <p class="small" style="margin-top:20px;opacity:.75">
+    Self-contained demo with sample checks.  
+    In production, checks map directly to your policy library.
+  </p>
+</div>
+
+<script>
+function reshuffle(){
+  const rows=[...document.querySelectorAll('tbody tr')];
+  let results=[];
+  rows.forEach(r=>{
+    const st=r.querySelector('td+td');
+    const flip=Math.random()<0.4;
+    st.textContent = flip ? (st.textContent==='PASS'?'FAIL':'PASS') : st.textContent;
+    results.push({check:r.querySelector('td').textContent,status:st.textContent});
+  });
+  document.getElementById('status').textContent =
+    "Last simulated: "+new Date().toLocaleTimeString();
+  window.currentResults = results;
+}
+
+function toCSV(rows){
+  return "check,status\n"+rows.map(r=>`${r.check},${r.status}`).join("\n");
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('btnSim').onclick=reshuffle;
+  document.getElementById('btnViewJSON').onclick=()=>{
+    const raw=JSON.stringify(window.currentResults||[],null,2);
+    rawTxt.textContent=raw;
+    rawDlg.showModal();
+    dlJSON.onclick=()=>{
+      const blob=new Blob([raw],{type:'application/json'});
+      const a=Object.assign(document.createElement('a'),
+        {href:URL.createObjectURL(blob),download:'bias_audit.json'});
+      a.click();
+    };
+    dlCSV.onclick=()=>{
+      const csv=toCSV(window.currentResults||[]);
+      const a=Object.assign(document.createElement('a'),
+        {href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),download:'bias_audit.csv'});
+      a.click();
+    };
+  };
+});
+</script>

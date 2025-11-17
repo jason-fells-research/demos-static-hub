@@ -1,0 +1,111 @@
+<!doctype html><html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FactPulse Pro — Ethraeon</title>
+<link rel="stylesheet" href="/assets/brand.css">
+<body><div class="wrap">
+  <h1>FactPulse Pro</h1>
+  <p class="small" style="color:#9aa4b2">
+    Heuristic risk scoring to illustrate <b>signals</b> and <b>actions</b>.
+    This logs your input to a tiny demo table so the stream looks live. Not a fact-check.
+  </p>
+
+  <div class="card">
+    <form id="f" style="display:grid;gap:10px">
+      <input id="text" placeholder="Type a headline or paste a post…" autocomplete="off">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="submit" id="scoreBtn">Score</button>
+        <span id="msg" class="small" style="color:#9aa4b2"></span>
+      </div>
+    </form>
+    <div id="result" class="small" style="margin-top:8px"></div>
+  </div>
+
+  <h3 style="margin-top:16px">Recent stream (demo)</h3>
+  <div id="stream"></div>
+
+  <p class="small" style="opacity:.75;margin-top:12px">
+    Sources shown are reputable starting points for verification; they’re not endorsements.
+  </p>
+</div>
+
+<script>
+const $ = s=>document.querySelector(s);
+
+async function loadStream(){
+  try{
+    const r = await fetch('/.netlify/functions/list_facts?v=' + Date.now());
+    const {facts=[]} = await r.json();
+    $('#stream').innerHTML = facts.map(s=>`
+      <div class="card" style="margin:8px 0">
+        <b>${escapeHTML(s.text)}</b><br>
+        Risk score: ${(Number(s.score)*100|0)}%<br>
+        Signals: ${unique((s.signals||[])).join(', ')}<br>
+        Actions: ${unique((s.actions||[])).join(', ')}
+      </div>`).join('') || '<div class="small">No items yet.</div>';
+  }catch(e){
+    $('#stream').innerHTML = '<div class="small" style="color:#ffb">Stream unavailable.</div>';
+  }
+}
+
+function unique(arr){ return [...new Set(arr)]; }
+function escapeHTML(x){ return String(x).replace(/[&<>"']/g,m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m])); }
+
+$('#f').onsubmit = async (e)=>{
+  e.preventDefault();
+  const t = $('#text').value.trim();
+  if(!t){ $('#msg').textContent='Enter text first.'; return; }
+  $('#msg').textContent='Scoring…';
+  try{
+    const p = await fetch('/.netlify/functions/score',{
+      method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:t})
+    }).then(r=>r.json());
+
+    const sources = (p.sources||[]).map(s=>`<a href="${s.url}" target="_blank" rel="noopener">${s.name}</a>`).join(' · ');
+    $('#result').innerHTML = `<b>${escapeHTML(t)}</b><br>
+      Risk score: ${(p.score*100|0)}%<br>
+      Signals: ${unique(p.signals||[]).join(', ')}<br>
+      Actions: ${unique(p.actions||[]).join(', ')}<br>
+      ${sources ? 'Sources: ' + sources : ''}`;
+
+    // log to stream (best-effort)
+    fetch('/.netlify/functions/record_fact',{
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({text:t,score:p.score,signals:p.signals,actions:p.actions})
+    }).finally(loadStream);
+
+    $('#msg').textContent='Scored.';
+  }catch(e){
+    $('#msg').textContent='Scoring unavailable.';
+  }
+};
+
+loadStream();
+
+function seedDemoFacts(){
+  return [
+    {text:"Over One-Third of U.S. users shared fake news", score:0.42, signals:["low-source-cred","no-source-citation"], actions:["monitor","link-to-official"], demo:true},
+    {text:"Deepfake of CEO going viral", score:0.66, signals:["synthetic-media-indicators","delegitimizing-language"], actions:["takedown request","legal review"], demo:true},
+    {text:"Immigration misinformation spread on social media", score:0.58, signals:["misleading-caption","coordinated-amplification"], actions:["prepare-FAQ","platform escalation"], demo:true}
+  ];
+}
+
+async function renderRecent(){
+  try{
+    const res = await fetch('/.netlify/functions/list_facts?v='+Date.now());
+    const j = await res.json();
+    const arr = j.facts||[];
+    const seeded = [...seedDemoFacts(), ...arr];
+    el('#stream').innerHTML = seeded.map(s=>`<div class="card" style="margin:8px 0">
+      ${s.demo?'<span class=\"badge demo\">Demo</span> ':''}<b>${s.text}</b><br>
+      Risk score: ${(s.score*100|0)}%<br>
+      Signals: ${[...new Set(s.signals||[])].join(', ')}<br>
+      Actions: ${[...new Set(s.actions||[])].join(', ')}<br>
+      <div class="small" style="opacity:.8">${s.demo?'<span class=\"badge demo\">Demo</span>':''}</div>
+    </div>`).join('');
+  }catch(e){
+    el('#stream').innerHTML = '<div class="small" style="color:#ff6">Stream unavailable.</div>';
+  }
+}
+
+</script>
+</body></html>

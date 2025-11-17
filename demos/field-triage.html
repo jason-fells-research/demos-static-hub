@@ -1,0 +1,168 @@
+<!doctype html><html lang="en">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Field Triage — Ethraeon</title>
+<link rel="stylesheet" href="/assets/brand.css">
+<body><div class="wrap">
+  <h1>Field Triage</h1>
+  <p class="small" style="color:#9aa4b2">
+    Log incidents, auto-score severity (1–5) with keyword/category weighting, and see next steps + refs.
+  </p>
+
+  <div class="card">
+    <form id="f" style="display:grid;gap:10px">
+      <div style="display:grid;gap:8px">
+        <label class="small">Category</label>
+        <select id="category">
+          <option>Harassment</option>
+          <option>Hate</option>
+          <option>Threats</option>
+          <option>Self-harm</option>
+          <option>Violence</option>
+          <option>Data leak</option>
+          <option selected>Uncategorized</option>
+        </select>
+      </div>
+      <div style="display:grid;gap:8px">
+        <label class="small">Summary</label>
+        <input id="summary" placeholder="One sentence summary…" autocomplete="off">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="submit">Submit</button>
+        <span id="msg" class="small" style="color:#9aa4b2"></span>
+      </div>
+    </form>
+<div id="recent"><h3>Recent Submissions</h3></div>
+  </div>
+
+  <h3 style="margin-top:16px">Recent cases</h3>
+  <div id="recent"></div>
+
+  <p class="small" style="opacity:.75;margin-top:12px">
+    Severity mapping and action lists are configurable per org; this demo shows the shape.
+  </p>
+</div>
+
+<script>
+const $ = s=>document.querySelector(s);
+
+function sevColor(sev){ if(sev>=4) return '#ef4444'; if(sev>=3) return '#f59e0b'; return '#10b981'; }
+
+function scoreSeverity(cat, summary){
+  let sev = 1; const s = String(summary||'');
+  const catBoost = {'Self-harm':5,'Threats':4,'Harassment':3,'Data leak':5,'Violence':5,'Hate':4};
+  if (catBoost[cat]) sev = Math.max(sev, catBoost[cat]);
+  const bumps = [
+    {re:/ssn|social security|pii|data leak|breach|passwords|credentials|dox/i, sev:5},
+    {re:/suicide|self[- ]?harm|kill myself|harm myself/i, sev:5},
+    {re:/bomb|shoot|death threat|kill you|active shooter|threat/i, sev:4},
+    {re:/sexual assault|inappropriately touched|harassment|stalking/i, sev:4},
+    {re:/exposed data|public repo|leaked/i, sev:4},
+    {re:/illegal|how to (?:make|do|bypass)|instructions to/i, sev:4}
+  ];
+  bumps.forEach(b=>{ if(b.re.test(s)) sev = Math.max(sev, b.sev); });
+  return Math.min(5, Math.max(1, sev));
+}
+function actionsFor(cat, sev){
+  const base = ['Acknowledge & monitor'];
+  if(sev>=3) base.push('Open internal ticket');
+  if(sev>=4) base.push('Escalate to security/legal');
+  if(sev>=5) base.push('Immediate containment / notify leadership');
+  if(cat==='Self-harm') base.push('Route to crisis resources');
+  if(cat==='Data leak') base.push('Rotate creds / incident response');
+  return [...new Set(base)];
+}
+function linksFor(cat){
+  const L={
+    'Self-harm':[{t:'988 Lifeline',u:'https://988lifeline.org'}],
+    'Threats':[{t:'FBI tips',u:'https://tips.fbi.gov'}],
+    'Data leak':[{t:'CISA guidance',u:'https://www.cisa.gov/resources-tools'}]
+  }; return L[cat]||[];
+}
+
+async function loadRecent(){
+  try{
+    const r = await fetch('/.netlify/functions/list_cases?v=' + Date.now());
+    const {cases=[]} = await r.json();
+    renderList(cases);
+  }catch(e){
+    $('#recent').innerHTML = '<div class="small" style="color:#ffb">Unable to load recent.</div>';
+  }
+}
+function renderList(cases){
+  const host = $('#recent');
+  host.innerHTML = (cases||[]).map(c=>{
+    const sev = scoreSeverity(c.category||'Uncategorized', c.summary||'');
+    const acts = actionsFor(c.category||'Uncategorized', sev);
+    const links = linksFor(c.category||'Uncategorized');
+    return `<div class="card" style="margin:8px 0">
+      ${c.demo?'<span class=\"badge demo\">Demo</span> ':''}<b>${c.case_id}</b> — <span class="pill" style="border-color:${sevColor(sev)};color:${sevColor(sev)}">Severity ${sev}/5</span>".replace("span", f"span class=\"badge sev-{sev}\"")<br>
+      <i>${c.category||'Uncategorized'}</i> — ${c.summary}<br>
+      <b>Recommended:</b> ${acts.join(' · ')}<br>
+      ${(links.length?('<b>Refs:</b> '+links.map(x=>`<a target="_blank" rel="noopener" href="${x.u}">${x.t}</a>`).join(' · ')):'')}
+      <div class="small" style="opacity:.8">Logged: ${new Date(c.created_at).toLocaleString()}</div>
+    </div>`;
+  }).join('') || '<div class="small">No recent cases.</div>';
+}
+
+$('#f').onsubmit = async (e)=>{
+  e.preventDefault();
+  const category = $('#category').value;
+  const summary = $('#summary').value.trim();
+  if(!summary){ $('#msg').textContent='Enter a summary first.'; return; }
+  $('#msg').textContent='Submitting…';
+  const caseId = (()=>{ if(window.crypto?.getRandomValues){const a=new Uint32Array(1);crypto.getRandomValues(a);return 'INC-'+a[0].toString(16).toUpperCase().padStart(6,'0').slice(0,6);} return 'INC-'+Math.random().toString(36).slice(2,8).toUpperCase();})();
+  try{
+    const r = await fetch('/.netlify/functions/submit_case',{
+      method:'POST',headers:{'content-type':'application/json'},
+      body: JSON.stringify({caseId, category, summary})
+    });
+    .then(()=>{const host=document.querySelector("#recent");const cat=document.querySelector("#category")?.value||"Uncategorized";const sum=document.querySelector("#summary")?.value||"(no summary)";const ts=new Date().toISOString();const card=`<div class="card"><div class="pill"></div><div></div><div class="small" style="opacity:.7"></div></div>`;host?.insertAdjacentHTML("afterbegin",card);const s=document.querySelector("#summary");if(s) s.value="";}).then(()=>{
+  const host=document.querySelector("#recent");
+  const cat=document.querySelector("#category")?.value||"Uncategorized";
+  const sum=document.querySelector("#summary")?.value||"(no summary)";
+  const ts=new Date().toISOString();
+  const card=`<div class="card"><div class="pill"></div><div></div><div class="small" style="opacity:.7"></div></div>`;
+  host?.insertAdjacentHTML("afterbegin", card);
+  const s=document.querySelector("#summary"); if(s) s.value="";
+}).catch(e=>console.error(e))
+if(!r.ok) throw new Error(await r.text());
+    $('#msg').textContent='Saved.';
+    $('#summary').value='';
+    await loadRecent();
+  }catch(e){
+    $('#msg').textContent='Error saving.';
+  }
+};
+
+loadRecent();
+
+function seedDemoCases(){
+  return [
+    {case_id:"DEMO-001", category:"Harassment", summary:"Coworker sent repeated unwanted messages.", created_at:new Date(), demo:true},
+    {case_id:"DEMO-002", category:"Data leak", summary:"Customer PII exposed in public repo.", created_at:new Date(), demo:true},
+    {case_id:"DEMO-003", category:"Self-harm", summary:"Student posted message about hurting themselves.", created_at:new Date(), demo:true},
+    {case_id:"DEMO-004", category:"Hate", summary:"Comment thread used racial slurs.", created_at:new Date(), demo:true},
+    {case_id:"DEMO-005", category:"Violence", summary:"Post included threats with weapon imagery.", created_at:new Date(), demo:true}
+  ];
+}
+
+const origRender = renderList;
+renderList = function(cases){
+  const seeded = [...seedDemoCases(), ...(cases||[])];
+  const host = document.querySelector('#recent');
+  host.innerHTML = seeded.map(c=>{
+    const sev = scoreSeverity(c.category, c.summary);
+    const acts = actionsFor(c.category, sev);
+    const links = linksFor(c.category);
+    return `<div class="card" style="margin:8px 0">
+      ${c.demo?'<span class=\"badge demo\">Demo</span> ':''}<b>${c.case_id}</b> — <span class="badge sev-${sev}">Severity ${sev}/5</span><br>
+      <i>${c.category||'Uncategorized'}</i> — ${c.summary}<br>
+      <b>Recommended:</b> ${acts.join(' · ')}<br>
+      ${(links.length?('<b>Refs:</b> '+links.map(x=>`<a target="_blank" rel="noopener" href="${x.u}">${x.t}</a>`).join(' · ')):'')}
+      <div class="small" style="opacity:.8">Logged: ${new Date(c.created_at).toLocaleString()} ${c.demo?'<span class=\"badge demo\">Demo</span>':''}</div>
+    </div>`;
+  }).join('');
+};
+
+</script>
+</body></html>
