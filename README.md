@@ -1,11 +1,29 @@
-# Ethraeon Systems - Demos Hub
-Constitutional Intelligence Platform - Interactive Demonstrations
+# demos-static-hub
 
-**Deployment:** demos.ethraeon.systems
+The static demonstration hub, deployed on Netlify.
 
-## Available Demos
-- Constitutional Bias Detection
-- Constitutional Framework Explorer
-- EcoTrack Sustainability Monitor
-- FactPulse Truth Verification
-- Field Triage Emergency Response
+## Layout
+
+| Path | What it holds |
+|---|---|
+| `index.html`, `whoami.html` | hub page and identity check |
+| `demos/` | `constitutional-bias.html`, `constitutional-framework.html`, `ecotrack.html`, `factpulse.html`, `field-triage.html`, `index.html` |
+| `data/` | the demo data (4 files) |
+| `netlify/` | functions (5 files) |
+| `assets/` | images (2 files) |
+
+## Run
+
+Open `index.html` in a browser, or run `netlify dev` for the functions.
+
+## Where the demonstrations live
+
+https://ethraeon.ai/demos/
+
+## Contact
+
+https://contact.ethraeon.ai/
+
+Copyright 2024-2026 ETHRAEON Systems.
+
+Humanitas Ante Machinam.
